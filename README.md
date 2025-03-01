@@ -1,2 +1,2 @@
-# CybersecurityCapstone
+# Cybersecurity-Capstone
 Cybersecurity Capstone
