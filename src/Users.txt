@@ -1,2 +1,2 @@
 [username]:[password]:[RFID tag here]:[FingerPrintID],
-reisk:password:ABCD1234:1,
+reisk:password:159 247 230 196:1,

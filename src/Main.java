@@ -41,13 +41,13 @@ public class Main extends JFrame implements ActionListener {
 	    private SerialPort nanoPort;
 	    private boolean awaitingResponse, secondResponse;
 	    private String RFID, fingerPrint;
-		private byte[] buffer = new byte[4];
+		private byte[] buffer = new byte[1];
 		private final int RFIDMODE = 1, FINGERPRINTMODE = 2, SIGNUPRFID = 3, SIGNUPFINGERPRINT = 4; 
 
 
 	    public Main() {
 	        setTitle("Login Page");
-	        setSize(300, 200);
+	        setSize(600, 200);
 	        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 	        setLayout(new GridLayout(4, 1));
 
@@ -79,7 +79,8 @@ public class Main extends JFrame implements ActionListener {
 
 	    @Override
 	    public void actionPerformed(ActionEvent e) {
-	        if (e.getSource() == submitButton) {
+
+	    	if (e.getSource() == submitButton) {
 	        	errorLabel.setText("");
 	            String username = usernameField.getText();
 	            String password = new String(passwordField.getPassword());
@@ -119,9 +120,13 @@ public class Main extends JFrame implements ActionListener {
 			        }
 		        }
 		        
+		        
+		        
 	            if (correctPassword == false) {
 	                messageLabel.setText("Invalid username or password.");
 	            } else {
+	            	// Remove the comma from attribute 3
+			        attributes[3] = attributes[3].substring(0, attributes[3].length()-1);
 	                messageLabel.setText("Awaiting arduino information!");
 	                // Code to share Arduino Information with Java be implemented
 	                
@@ -152,42 +157,75 @@ public class Main extends JFrame implements ActionListener {
 	        			errorLabel.setText("Failed to open Serial Port");
 	        			return;
 	        		}
-	        		
+	        		awaitingResponse = true;
+	        		secondResponse = false;
 	        		Runtime.getRuntime().addShutdownHook(new Thread(() -> {nanoPort.closePort(); }));
-	        		DataListener dataListener = new DataListener();
+	        		DataListener dataListener = new DataListener(secondResponse, awaitingResponse, RFID, fingerPrint, errorLabel);
 	        		nanoPort.addDataListener(dataListener);
 	        		
 	        		// waiting for data
 	        		errorLabel.setText("");
-	        		messageLabel.setText("Arduino connected. Awaiting RFID");
-	        		nanoPort.writeBytes(buffer, RFIDMODE);
+        			messageLabel.setText("Arduino connected. Awaiting RFID");
+        			
+        			// messageLabel.updateUI();
+        			buffer[0] = 48+RFIDMODE;
+	        		System.out.println("RFIDMODE " + nanoPort.writeBytes(buffer, 1));
+	        		while(nanoPort.bytesAwaitingWrite() > 0) {
+	        			System.out.println("Waiting for buffer");
+	        		}
 	        		long timeStart = System.currentTimeMillis();
-	        		while(awaitingResponse) {
+	        		System.out.println("AwaitingResponse = " + awaitingResponse);
+	        		System.out.println("dataListener.getAwaitingResponse() " + dataListener.getAwaitingResponse());
+	        		while(awaitingResponse == true) {
 	        			// 15 seconds
-	        			if(System.currentTimeMillis() - timeStart > 15000.0) {
+	        			if(System.currentTimeMillis() - timeStart > 5000.0) {
+	    	        		RFID = dataListener.getRFID();
+	        				if(!RFID.equals("")) {
+	        					break;
+	        				}
 	        				errorLabel.setText("Took too long to respond");
+	        				nanoPort.closePort();
 	        				return;
 	        			}
+	        			//System.out.println("dataListener.getAwaitingResponse() " + dataListener.getAwaitingResponse());
+	        			awaitingResponse = dataListener.getAwaitingResponse();
 	        		}
-	        		
+    				nanoPort.closePort();
+	        		RFID = dataListener.getRFID();
+	        		System.out.println("attributes[2] vs RFID: " + attributes[2] + " / " + RFID);
 	        		if(attributes[2].equals(RFID)) {
+	        			nanoPort.openPort();
 	        			secondResponse = true;
 	        			awaitingResponse = true;
+	        			dataListener.setSecondResponse(secondResponse);
+	        			dataListener.setAwaitingResponse(awaitingResponse);
 		        		messageLabel.setText("RFID Verified. Awaiting FingerPrint");
 		        		// Send a message to Arduino to switch to FingerPrint mode
-		        		nanoPort.writeBytes(buffer, FINGERPRINTMODE);
+		        		buffer[0] = 48+FINGERPRINTMODE;
+		        		System.out.println("FINGERPRINTMODE " + nanoPort.writeBytes(buffer, 1));
+		        		while(nanoPort.bytesAwaitingWrite() > 0) {
+		        			System.out.println("Waiting for buffer");
+		        		}
 		        		timeStart = System.currentTimeMillis();
-		        		while(awaitingResponse) {
+		        		while(awaitingResponse == true) {
 		        			// 15 seconds
-		        			if(System.currentTimeMillis() - timeStart > 15000.0) {
+		        			if(System.currentTimeMillis() - timeStart > 5000.0) {
+		        				fingerPrint = dataListener.getFingerPrint();
+		        				if(!fingerPrint.equals("")) {
+		        					break;
+		        				}
 		        				errorLabel.setText("Took too long to respond");
+		        				nanoPort.closePort();
 		        				return;
 		        			}
+		        			awaitingResponse = dataListener.getAwaitingResponse();
 		        		}
+        				nanoPort.closePort();
+		        		fingerPrint = dataListener.getFingerPrint();
+		        		System.out.println("attributes[3] vs fingerPrint: " + attributes[3] + " vs " + fingerPrint);
 		        		if(attributes[3].equals(fingerPrint)) {
 		        			secondResponse = false;
 			        		messageLabel.setText("Identity confirmed. Welcome!");
-			        		
 		        		} else {
 		        			messageLabel.setText("FingerPrint Incorrect. Please try again");
 		        			return;
@@ -286,13 +324,14 @@ public class Main extends JFrame implements ActionListener {
 	        		}
 	        		
 	        		Runtime.getRuntime().addShutdownHook(new Thread(() -> {nanoPort.closePort(); }));
-	        		DataListener dataListener = new DataListener();
+	        		DataListener dataListener = new DataListener(secondResponse, awaitingResponse, RFID, fingerPrint, errorLabel);
 	        		nanoPort.addDataListener(dataListener);
 	        		
 	        		// waiting for data
 	        		errorLabel.setText("");
 	        		messageLabel.setText("Arduino connected. Awaiting RFID to enroll");
-	        		nanoPort.writeBytes(buffer, SIGNUPRFID);
+	        		buffer[0] = 48+SIGNUPRFID;
+	        		nanoPort.writeBytes(buffer, 1);
 	        		long timeStart = System.currentTimeMillis();
 	        		while(awaitingResponse) {
 	        			// 15 seconds
@@ -308,7 +347,8 @@ public class Main extends JFrame implements ActionListener {
 	        		secondResponse = true;
 	        		awaitingResponse = true;
 	        		messageLabel.setText("RFID Acquired. Awaiting FingerPrint");
-	        		nanoPort.writeBytes(buffer, SIGNUPFINGERPRINT);
+	        		buffer[0] = 48+SIGNUPFINGERPRINT;
+	        		nanoPort.writeBytes(buffer, 1);
 	        		
 	        		timeStart = System.currentTimeMillis();
 	        		while(awaitingResponse) {
@@ -342,40 +382,96 @@ public class Main extends JFrame implements ActionListener {
 	        SwingUtilities.invokeLater(Main::new);
 	    }
 	    
-	    
-	    class DataListener implements SerialPortDataListener {
+}
 
-	    	@Override
-	    	public int getListeningEvents() {
-	    		 return SerialPort.LISTENING_EVENT_DATA_RECEIVED | SerialPort.LISTENING_EVENT_PORT_DISCONNECTED;
-	    	}
-
-	    	@Override
-	    	public void serialEvent(SerialPortEvent serialPortEvent) {
-	    		if(serialPortEvent.getEventType() == SerialPort.LISTENING_EVENT_DATA_RECEIVED) {
-	    			byte[] bytes = serialPortEvent.getReceivedData(); // Data Received in Bytes
-	    			if(secondResponse == false) {
-	    				// System.out.println(bytes.length);
-	    				String str = new String(bytes, StandardCharsets.UTF_8);
-	    				System.out.println(str);
-	    				RFID = str;
-	    				awaitingResponse = false;
-	    			} else {
-	    				String str = new String(bytes, StandardCharsets.UTF_8);
-	    				System.out.println(str);
-	    				fingerPrint = str;
-	    				awaitingResponse = false;
-	    			}
-	    		} else if (serialPortEvent.getEventType() == SerialPort.LISTENING_EVENT_PORT_DISCONNECTED) {
-	    			// Nano is disconnected. 
-	    			errorLabel.setText("Nano is disconnected");
-	    		}
-	    		
-	    	}
-	    	
-	    }
+class DataListener implements SerialPortDataListener {
 	
+	private boolean secondResponse;
+	private boolean awaitingResponse;
+	private String RFID;
+	private String fingerPrint;
+    private JLabel errorLabel;
+    
+    public DataListener(boolean secondResponse, boolean awaitingResponse, 
+    		String RFID, String fingerPrint, JLabel errorLabel) {
+    	this.secondResponse = secondResponse;
+    	this.awaitingResponse = awaitingResponse;
+    	this.RFID = RFID;
+    	this.fingerPrint = fingerPrint;
+    	this.errorLabel = errorLabel;
+    }
 
+	@Override
+	public int getListeningEvents() {
+		 return SerialPort.LISTENING_EVENT_DATA_RECEIVED | SerialPort.LISTENING_EVENT_PORT_DISCONNECTED;
+	}
+
+	@Override
+	public void serialEvent(SerialPortEvent serialPortEvent) {
+		if(serialPortEvent.getEventType() == SerialPort.LISTENING_EVENT_DATA_RECEIVED) {
+			byte[] bytes = serialPortEvent.getReceivedData(); // Data Received in Bytes			
+			if(secondResponse == false) {
+				if (bytes.length > 2) {
+					// System.out.print(bytes.length + " ");
+    				String str = new String(bytes, StandardCharsets.UTF_8);
+    				if(str.equals("Starting the RFID Reader...")) {
+    					return;
+    				}
+    				str = str.trim();
+    				if(RFID.equals("")) {
+        				System.out.println("RFID: " + str);
+    				}
+    				RFID = str;
+    				awaitingResponse = false;
+				}
+			} else {
+				if (bytes.length > 2) {
+					String str = new String(bytes, StandardCharsets.UTF_8);
+					str = str.trim();
+					// System.out.println(str);
+					if(RFID.equals(str)) {
+						return;
+					}
+					if(fingerPrint.equals("")) {
+						System.out.println("FingerPrint: " + str);
+					}
+					fingerPrint = str;
+					awaitingResponse = false;
+				}
+			}
+		} else if (serialPortEvent.getEventType() == SerialPort.LISTENING_EVENT_PORT_DISCONNECTED) {
+			// Nano is disconnected. 
+			errorLabel.setText("Nano is disconnected");
+		}
+		
+	}
+	
+	public void setAwaitingResponse(boolean awaitingResponse) {
+		this.awaitingResponse = awaitingResponse;
+	}
+	public void setSecondResponse(boolean secondResponse) {
+		this.secondResponse = secondResponse;
+	}
+	public void setRFID(String RFID) {
+		this.RFID = RFID;
+	}
+	public void setFingerPrint(String fingerPrint) {
+		this.fingerPrint = fingerPrint;
+	}
+ 	
+	public boolean getAwaitingResponse() {
+		return awaitingResponse;
+	}
+	public boolean getSecondResponse() {
+		return secondResponse;
+	}
+	public String getRFID() {
+		return RFID;
+	}
+	public String getFingerPrint() {
+		return fingerPrint;
+	}
+	
 }
 
 
