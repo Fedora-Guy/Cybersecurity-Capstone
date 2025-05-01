@@ -159,6 +159,8 @@ public class Main extends JFrame implements ActionListener {
 	        		}
 	        		awaitingResponse = true;
 	        		secondResponse = false;
+	    	        RFID = "";
+	    	        fingerPrint = "";
 	        		Runtime.getRuntime().addShutdownHook(new Thread(() -> {nanoPort.closePort(); }));
 	        		DataListener dataListener = new DataListener(secondResponse, awaitingResponse, RFID, fingerPrint, errorLabel);
 	        		nanoPort.addDataListener(dataListener);
@@ -177,13 +179,13 @@ public class Main extends JFrame implements ActionListener {
 	        		System.out.println("AwaitingResponse = " + awaitingResponse);
 	        		System.out.println("dataListener.getAwaitingResponse() " + dataListener.getAwaitingResponse());
 	        		while(awaitingResponse == true) {
-	        			// 15 seconds
-	        			if(System.currentTimeMillis() - timeStart > 5000.0) {
+	        			// 5 seconds
+	        			if(System.currentTimeMillis() - timeStart > 5000.0 || awaitingResponse == false) {
 	    	        		RFID = dataListener.getRFID();
 	        				if(!RFID.equals("")) {
 	        					break;
 	        				}
-	        				errorLabel.setText("Took too long to respond");
+	        				errorLabel.setText("RFID took too long to respond");
 	        				nanoPort.closePort();
 	        				return;
 	        			}
@@ -208,13 +210,15 @@ public class Main extends JFrame implements ActionListener {
 		        		}
 		        		timeStart = System.currentTimeMillis();
 		        		while(awaitingResponse == true) {
-		        			// 15 seconds
-		        			if(System.currentTimeMillis() - timeStart > 5000.0) {
+		        			// 10 seconds
+		        			
+		        			if(System.currentTimeMillis() - timeStart > 10000.0 || awaitingResponse == false) {
 		        				fingerPrint = dataListener.getFingerPrint();
+		        				// System.out.println("DL FingerPrint: " + fingerPrint);
 		        				if(!fingerPrint.equals("")) {
 		        					break;
 		        				}
-		        				errorLabel.setText("Took too long to respond");
+		        				errorLabel.setText("Finger Print took too long to respond");
 		        				nanoPort.closePort();
 		        				return;
 		        			}
@@ -226,6 +230,7 @@ public class Main extends JFrame implements ActionListener {
 		        		if(attributes[3].equals(fingerPrint)) {
 		        			secondResponse = false;
 			        		messageLabel.setText("Identity confirmed. Welcome!");
+			        		System.out.println("Identity confirmed. Welcome!");
 		        		} else {
 		        			messageLabel.setText("FingerPrint Incorrect. Please try again");
 		        			return;
@@ -323,6 +328,11 @@ public class Main extends JFrame implements ActionListener {
 	        			return;
 	        		}
 	        		
+	        		// Defaults
+	        		awaitingResponse = true;
+	    	        secondResponse = false;
+	    	        RFID = "";
+	    	        fingerPrint = "";
 	        		Runtime.getRuntime().addShutdownHook(new Thread(() -> {nanoPort.closePort(); }));
 	        		DataListener dataListener = new DataListener(secondResponse, awaitingResponse, RFID, fingerPrint, errorLabel);
 	        		nanoPort.addDataListener(dataListener);
@@ -334,42 +344,80 @@ public class Main extends JFrame implements ActionListener {
 	        		nanoPort.writeBytes(buffer, 1);
 	        		long timeStart = System.currentTimeMillis();
 	        		while(awaitingResponse) {
-	        			// 15 seconds
-	        			if(System.currentTimeMillis() - timeStart > 15000.0) {
-	        				errorLabel.setText("Took too long to respond");
+	        			// 5 seconds
+	        			if(System.currentTimeMillis() - timeStart > 5000.0 || awaitingResponse == false) {
+	    	        		RFID = dataListener.getRFID();
+	        				if(!RFID.equals("")) {
+	        					break;
+	        				}
+	        				errorLabel.setText("RFID took too long to respond");
+	        				nanoPort.closePort();
 	        				return;
 	        			}
+	        			//System.out.println("dataListener.getAwaitingResponse() " + dataListener.getAwaitingResponse());
+	        			awaitingResponse = dataListener.getAwaitingResponse();
 	        		}
 	        		
 	        		// RFID Acquired if we reach here
-	        		// RFID can be shared between users, might change later
 	        		
+	        		nanoPort.closePort();
+	        		RFID = dataListener.getRFID();
+	        		// RFID can be shared between users, this can be changed later 
+	        		// ^ to do this: search through all attributes[2] of the Users.txt, 
+	        		// and see if RFID matches. If so, we have to try again with another RFID card)
+	        		// I do not plan on implementing this, but just stating that I could
+	        		
+	        		// Reset the dataListener
 	        		secondResponse = true;
 	        		awaitingResponse = true;
+	        		dataListener.setAwaitingResponse(awaitingResponse);
+	        		dataListener.setSecondResponse(secondResponse);
+	        		
+	        		// Reopen the port, and send the FingerPrint Sign-up code
+	        		nanoPort.openPort();
 	        		messageLabel.setText("RFID Acquired. Awaiting FingerPrint");
 	        		buffer[0] = 48+SIGNUPFINGERPRINT;
 	        		nanoPort.writeBytes(buffer, 1);
 	        		
+	        		// Note, you will have to place your fingerprint twice
+	        		// To verify it works
 	        		timeStart = System.currentTimeMillis();
-	        		while(awaitingResponse) {
-	        			// 15 seconds
-	        			if(System.currentTimeMillis() - timeStart > 15000.0) {
-	        				errorLabel.setText("Took too long to respond");
+	        		while(awaitingResponse == true) {
+	        			// 10 seconds
+	        			
+	        			if(System.currentTimeMillis() - timeStart > 15000.0 || awaitingResponse == false) {
+	        				fingerPrint = dataListener.getFingerPrint();
+	        				if(!fingerPrint.equals("")) {
+	        					break;
+	        				}
+	        				errorLabel.setText("Finger Print took too long to respond");
+	        				nanoPort.closePort();
 	        				return;
 	        			}
+	        			awaitingResponse = dataListener.getAwaitingResponse();
 	        		}
+	        		nanoPort.closePort();
+	        		fingerPrint = dataListener.getFingerPrint();
+	        		System.out.println("SignUp FingerPrint: " + fingerPrint);
 	        		
+	        		if(fingerPrint.equals("")) {
+    					System.out.println("No finger given");
+        				errorLabel.setText("No finger given");
+    					return;
+    				}
 	        		// FingerPrint Acquired
 		        	secondResponse = false;
 		        	messageLabel.setText("Fingerprint Acquired. Creating user");
 		        	
-		        	String newUser = username + ":" + password + ":" + RFID + ":" + fingerPrint + ",";
+		        	String newUser = "\n" + username + ":" + password + ":" + RFID + ":" + fingerPrint + ",";
 		        	
 		        	try {
 		        		BufferedWriter write = new BufferedWriter(new FileWriter(file, true));
 		        		write.write(newUser);
 		        		messageLabel.setText("User added to file");
+		        		write.close();
 		        	} catch (IOException exception) {
+		        		messageLabel.setText("User not added to file");
 		        		exception.printStackTrace();
 		        	}
 		        	
@@ -409,7 +457,7 @@ class DataListener implements SerialPortDataListener {
 	@Override
 	public void serialEvent(SerialPortEvent serialPortEvent) {
 		if(serialPortEvent.getEventType() == SerialPort.LISTENING_EVENT_DATA_RECEIVED) {
-			byte[] bytes = serialPortEvent.getReceivedData(); // Data Received in Bytes			
+			byte[] bytes = serialPortEvent.getReceivedData(); // Data Received in Bytes		
 			if(secondResponse == false) {
 				if (bytes.length > 2) {
 					// System.out.print(bytes.length + " ");
@@ -425,11 +473,9 @@ class DataListener implements SerialPortDataListener {
     				awaitingResponse = false;
 				}
 			} else {
-				if (bytes.length > 2) {
 					String str = new String(bytes, StandardCharsets.UTF_8);
 					str = str.trim();
-					// System.out.println(str);
-					if(RFID.equals(str)) {
+					if(str.isBlank()) {
 						return;
 					}
 					if(fingerPrint.equals("")) {
@@ -437,7 +483,6 @@ class DataListener implements SerialPortDataListener {
 					}
 					fingerPrint = str;
 					awaitingResponse = false;
-				}
 			}
 		} else if (serialPortEvent.getEventType() == SerialPort.LISTENING_EVENT_PORT_DISCONNECTED) {
 			// Nano is disconnected. 

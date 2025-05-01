@@ -37,6 +37,7 @@ RFID rfid(SS_PIN, RST_PIN);
 String rfidCard;
 int incomingByte = -1;
 int fingerID = -1;
+uint8_t id = 0;
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
 void setup() {
@@ -49,7 +50,7 @@ void setup() {
   delay(100);
   SPI.begin();
   rfid.init();
-  // Serial.println("test"); // MUST BE REMOVED LATER
+
   finger.begin(57600);
   delay(5);
   if (finger.verifyPassword()) {
@@ -86,6 +87,7 @@ void loop() {
   if(incomingByte == -1) {
     // No Data
     incomingByte = Serial.read();
+    // Serial.println("incomingByte = " + incomingByte);
   } else if (incomingByte == (0+48)) { // Not Used / Stopped ?
     // Hasn't started yet
     return;
@@ -95,9 +97,12 @@ void loop() {
         rfidCard = String(rfid.serNum[0]) + " " + String(rfid.serNum[1]) + " " + String(rfid.serNum[2]) + " " + String(rfid.serNum[3]);
         Serial.println(rfidCard);
       }
+      incomingByte = -1;
       rfid.halt();
     }
+    delay(50);
   } else if (incomingByte == (2+48)) { // FingerPrint
+    // Serial.println("Finger Print");
     int val = digitalRead(2); // Read in from touch sensor 
     if(val == HIGH){ // if Touch sensor is being pressed, check finger print
       fingerID = getFingerprintIDez();
@@ -105,10 +110,20 @@ void loop() {
     delay(50);            //don't ned to run this at full speed.
     if(fingerID != -1) {
       Serial.println(fingerID);
+      fingerID = -1;
+      incomingByte = -1;
     }
   } else if (incomingByte == (4+48)) { // SignUpFingerPrint (enroll)
-    Serial.println(incomingByte);
-  } else { // Not given 0, 1, 2, 3, 4... Return byte to Serial Println
+    finger.getTemplateCount();
+    id = finger.templateCount + 1;
+    if(getFingerprintEnroll()) {
+      Serial.println(id);
+      id = 0;
+      incomingByte = -1;
+    }
+  } else if (incomingByte == 10){ // New Line character, happens after Serial is closed
+    incomingByte = -1;
+  } else { // Not given 0, 1, 2, 3, 4, or 10 ~  Return byte to Serial Println
     Serial.println(incomingByte);
   }
 
@@ -129,4 +144,111 @@ int getFingerprintIDez() {
   // Serial.print("Found ID #"); Serial.print(finger.fingerID);
   // Serial.print(" with confidence of "); Serial.println(finger.confidence);
   return finger.fingerID;
+}
+
+uint8_t getFingerprintEnroll() {
+
+  int p = -1;
+  
+  while (p != FINGERPRINT_OK) {
+    p = finger.getImage();
+    switch (p) {
+    case FINGERPRINT_OK:
+      break;
+    case FINGERPRINT_NOFINGER:
+      break;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      break;
+    case FINGERPRINT_IMAGEFAIL:
+      break;
+    default:
+      break;
+    }
+  }
+
+  // OK success!
+
+  p = finger.image2Tz(1);
+  switch (p) {
+    case FINGERPRINT_OK:
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      return p;
+    default:
+      return p;
+  }
+
+  delay(2000);
+  p = 0;
+  while (p != FINGERPRINT_NOFINGER) {
+    p = finger.getImage();
+  }
+
+  p = -1;
+  
+  while (p != FINGERPRINT_OK) {
+    p = finger.getImage();
+    switch (p) {
+    case FINGERPRINT_OK:
+      break;
+    case FINGERPRINT_NOFINGER:
+      break;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      break;
+    case FINGERPRINT_IMAGEFAIL:
+      break;
+    default:
+      break;
+    }
+  }
+
+  // OK success!
+
+  p = finger.image2Tz(2);
+  switch (p) {
+    case FINGERPRINT_OK:
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      return p;
+    default:
+      return p;
+  }
+
+  // OK converted!
+
+  p = finger.createModel();
+  if (p == FINGERPRINT_OK) {
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    return p;
+  } else if (p == FINGERPRINT_ENROLLMISMATCH) {
+    return p;
+  } else {
+    return p;
+  }
+
+  p = finger.storeModel(id);
+  if (p == FINGERPRINT_OK) {
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    return p;
+  } else if (p == FINGERPRINT_BADLOCATION) {
+    return p;
+  } else if (p == FINGERPRINT_FLASHERR) {
+    return p;
+  } else {
+    return p;
+  }
+
+  return true;
 }
